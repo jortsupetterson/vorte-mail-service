@@ -1,16 +1,19 @@
 {
 	"name": "vorte-mail-service",
+	"author": {
+		"email": "lehtinenjori03@gmail.com",
+		"name": "Jori Lehtinen",
+		"url": "https://vorte.app"
+	},
 	"version": "0.0.0",
 	"private": true,
+	"type": "module",
 	"scripts": {
 		"deploy": "wrangler deploy",
-		"dev": "wrangler dev",
-		"start": "wrangler dev",
-		"test": "vitest"
+		"dev": "wrangler dev"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.8.19",
-		"vitest": "~3.2.0",
-		"wrangler": "^4.26.0"
+		"wrangler": "^4.26.0",
+		"esbuild": "0.25.8"
 	}
 }
