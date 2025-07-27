@@ -28,10 +28,82 @@ export class VorteMailService extends WorkerEntrypoint {
 	}
 
 	/**
-	 * @param {{ subject: string, plainText?: string, html?: string, headers?: Record<string,string> }} CONTENT
-	 * @param {Array<string|{address:string,displayName?:string}>} RECIPIENTS
-	 * @param {{ wait?: boolean, timeoutMs?: number, diag?: string }} [opts]
-	 * @returns {Promise<{ id?: string, status: string, operationLocation?: string, step?: string, error?: {name:string,message:string,stack?:string,code?:any} }>}
+	 * Sends an email via **Azure Communication Services – Email**.
+	 *
+	 * Builds an HMAC‑SHA256 signed request (signed headers: `x-ms-date;host;x-ms-content-sha256`)
+	 * and uses idempotency headers (`Operation-Id`, `Repeatability-*`). A `202 Accepted` means the
+	 * operation is running on the service. With `wait=true`, the function polls the operation until
+	 * completion or until `timeoutMs` elapses. Responses `429` and `5xx` are retried with quadratic
+	 * backoff; `409` triggers polling of the existing operation.
+	 *
+	 * Validates essentials (subject, body size) and aborts the network request after `FETCH_TIMEOUT_MS`.
+	 * Payload size is limited by `MAX_BODY_SIZE`.
+	 *
+	 * > **Diagnostics:** Set `opts.diag` to any documented step (see `SendDiagStep`) to return early
+	 * with `{ status: "Diag", step }`. This enables fast unit testing and fault isolation without
+	 * making an outbound call.
+	 *
+	 * @async
+	 *
+	 * @param {Recipient[]} RECIPIENTS
+	 * Recipients. A string value is coerced to `{ address: "<email>" }`. Object form may include
+	 * `displayName`. Duplicates and formats are normalized by `normalizeRecipients`.
+	 *
+	 * @param {EmailContent} CONTENT
+	 * Message content. `subject` is required. At least one of `plainText` or `html` should be supplied.
+	 *
+	 * @param {Array<Record<string, any>>} [ATTACHMENTS]
+	 * Attachments passed through to ACS Email as-is. The function does not transform their shape.
+	 *
+	 * @param {Record<string, string>} [HEADERS]
+	 * Additional headers to include under the `headers` field of the ACS request payload.
+	 *
+	 * @param {SendOptions} [opts]
+	 * Execution and diagnostics options.
+	 *
+	 * @returns {Promise<SendResult>}
+	 * Returns the operation identifier and status. On errors the shape is
+	 * `{ status: "Error", error }`. On success at minimum `{ status: "Running" | "Succeeded" | "Failed" }`.
+	 *
+	 * @typedef {string | { address: string, displayName?: string }} Recipient
+	 *
+	 * @typedef EmailContent
+	 * @property {string} subject            Email subject. **Required.**
+	 * @property {string} [plainText]        Plain‑text body.
+	 * @property {string} [html]             HTML body.
+	 *
+	 * @typedef SendOptions
+	 * @property {boolean} [wait=false]      If true, poll the operation until completion or timeout.
+	 * @property {number}  [timeoutMs=30000] Max time in milliseconds to wait when `wait=true`.
+	 * @property {SendDiagStep} [diag]       Return early at the given diagnostic step without I/O.
+	 *
+	 * @typedef {"entered"|"validated"|"secrets"|"key"|"signed"|`post:${number}`} SendDiagStep
+	 * Diagnostic steps:
+	 * - `"entered"`: function entry.
+	 * - `"validated"`: payload validated and size within limits.
+	 * - `"secrets"`: endpoint and access key fetched from environment.
+	 * - `"key"`: HMAC key material derived.
+	 * - `"signed"`: request signed, before network I/O.
+	 * - ``"post:<status>"``: POST completed; `<status>` is the HTTP status code.
+	 *
+	 * @typedef SendError
+	 * @property {string} name
+	 * @property {string} message
+	 * @property {string} [stack]
+	 * @property {any}    [code]
+	 *
+	 * @typedef SendResult
+	 * @property {"Diag"|"Running"|"Succeeded"|"Failed"|"Error"} status
+	 * @property {string} [id]                    Operation id. Falls back to local `operationId` if not returned.
+	 * @property {string} [operationLocation]     ACS `Operation-Location`, when available.
+	 * @property {string} [step]                  Diagnostic step when `status === "Diag"`.
+	 * @property {SendError} [error]              Error payload when `status === "Error"`.
+	 *
+	 * @notes
+	 * - Uses external constants: `SENDER_ADDRESS`, `API_VERSION`, `MAX_BODY_SIZE`, `MAX_ATTEMPTS`,
+	 *   `BASE_BACKOFF_MS`, and `FETCH_TIMEOUT_MS`.
+	 * - Requires secrets in environment bindings: `AZURE_COMMUNICATIONS_ENDPOINT`, `AZURE_COMMUNICATIONS_SECRET`.
+	 * - Host header uses the **hostname only** (no port) per ACS HMAC rules.
 	 */
 	async sendEmail(RECIPIENTS, CONTENT, ATTACHMENTS, HEADERS, opts = {}) {
 		const { wait = false, timeoutMs = 30000, diag } = opts;
