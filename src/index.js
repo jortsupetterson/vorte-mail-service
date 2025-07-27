@@ -33,7 +33,7 @@ export class VorteMailService extends WorkerEntrypoint {
 	 * @param {{ wait?: boolean, timeoutMs?: number, diag?: string }} [opts]
 	 * @returns {Promise<{ id?: string, status: string, operationLocation?: string, step?: string, error?: {name:string,message:string,stack?:string,code?:any} }>}
 	 */
-	async sendMail(CONTENT, RECIPIENTS, opts = {}) {
+	async sendEmail(RECIPIENTS, CONTENT, ATTACHMENTS, HEADERS, opts = {}) {
 		const { wait = false, timeoutMs = 30000, diag } = opts;
 
 		try {
@@ -50,8 +50,11 @@ export class VorteMailService extends WorkerEntrypoint {
 					...(CONTENT.plainText ? { plainText: CONTENT.plainText } : {}),
 					...(CONTENT.html ? { html: CONTENT.html } : {}),
 				},
+				...(ATTACHMENTS ? { attachments: ATTACHMENTS } : {}),
 				recipients: { to: normalizeRecipients(RECIPIENTS) },
-				...(CONTENT.headers ? { headers: CONTENT.headers } : {}),
+				replyTo: [{ address: 'support@vorte.app', displayName: 'Vorte Support' }],
+				...(HEADERS ? { headers: HEADERS } : {}),
+				userEngagementTrackingDisabled: true,
 			};
 			const bodyStr = JSON.stringify(bodyObj);
 			if (bodyStr.length > MAX_BODY_SIZE) throw new Error(`Payload too large: ${bodyStr.length} bytes`);
